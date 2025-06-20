@@ -417,13 +417,13 @@ function App() {
 
   const exportToExcel = () => {
     const exportData = tasks.map((task, index) => ({
-      'No.': index + 1,
-      'タスク名': task.name,
-      '開始日': task.startDate,
-      '終了日': task.endDate,
-      '初校日': task.firstProofDate || '',
-      '校了日': task.finalProofDate || '',
-      '色': task.color
+        'No.': index + 1,
+        'タスク名': task.name,
+        '開始日': task.startDate,
+        '終了日': task.endDate,
+        '初校日': task.firstProofDate || '',
+        '校了日': task.finalProofDate || '',
+        '色': task.color
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -454,17 +454,66 @@ function App() {
         const worksheet = workbook.Sheets[sheetName];
         const jsonData = XLSX.utils.sheet_to_json<any>(worksheet);
 
-        const importedTasks: Task[] = jsonData.map((row, index) => ({
-          id: `imported-task-${Date.now()}-${index}`,
-          name: String(row['タスク名'] || row['Task Name'] || row['name'] || `タスク${index + 1}`),
-          startDate: formatDateForInput(row['開始日'] || row['Start Date'] || row['startDate']),
-          endDate: formatDateForInput(row['終了日'] || row['End Date'] || row['endDate']),
-          firstProofDate: formatDateForInput(row['初校日'] || row['First Proof'] || row['firstProofDate']) || '',
-          finalProofDate: formatDateForInput(row['校了日'] || row['Final Proof'] || row['finalProofDate']) || '',
-          color: String(row['色'] || row['Color'] || row['color'] || '#3B82F6'),
-          cellTexts: {},
-          cellColors: {}
-        })).filter(task => task.name && task.startDate && task.endDate && isValid(parseISO(task.startDate)) && isValid(parseISO(task.endDate))) as Task[];
+        const importedTasks: Task[] = jsonData.map((row, index) => {
+          const taskId = `imported-task-${Date.now()}-${index}`;
+          const cellTexts: {[key: string]: string} = {};
+          const cellColors: {[key: string]: string} = {};
+          const taskColor = String(row['色'] || row['Color'] || row['color'] || '#3B82F6');
+          
+          // セルテキストデータの処理
+          try {
+            const cellDataStr = row['セルデータ'] || row['Cell Data'] || row['cellData'];
+            if (cellDataStr && typeof cellDataStr === 'string') {
+              const cellData = JSON.parse(cellDataStr);
+              
+              // 日付ごとのセルテキストを復元
+              if (cellData && typeof cellData === 'object') {
+                Object.entries(cellData).forEach(([datePart, text]) => {
+                  if (datePart && text) {
+                    // taskId-yyyy-MM-dd 形式のキーを作成
+                    const cellKey = `${taskId}-${datePart}`;
+                    cellTexts[cellKey] = String(text);
+                  }
+                });
+              }
+            }
+          } catch (error) {
+            console.warn('セルテキストデータの解析に失敗しました:', error);
+          }
+          
+          // セルカラーデータの処理
+          try {
+            const cellColorStr = row['セルカラー'] || row['Cell Color'] || row['cellColor'];
+            if (cellColorStr && typeof cellColorStr === 'string') {
+              const cellColorData = JSON.parse(cellColorStr);
+              
+              // 日付ごとのセルカラーを復元
+              if (cellColorData && typeof cellColorData === 'object') {
+                Object.entries(cellColorData).forEach(([datePart, color]) => {
+                  if (datePart && color) {
+                    // taskId-yyyy-MM-dd 形式のキーを作成
+                    const cellKey = `${taskId}-${datePart}`;
+                    cellColors[cellKey] = String(color);
+                  }
+                });
+              }
+            }
+          } catch (error) {
+            console.warn('セルカラーデータの解析に失敗しました:', error);
+          }
+          
+          return {
+            id: taskId,
+            name: String(row['タスク名'] || row['Task Name'] || row['name'] || `タスク${index + 1}`),
+            startDate: formatDateForInput(row['開始日'] || row['Start Date'] || row['startDate']),
+            endDate: formatDateForInput(row['終了日'] || row['End Date'] || row['endDate']),
+            firstProofDate: formatDateForInput(row['初校日'] || row['First Proof'] || row['firstProofDate']) || '',
+            finalProofDate: formatDateForInput(row['校了日'] || row['Final Proof'] || row['finalProofDate']) || '',
+            color: taskColor,
+            cellTexts: cellTexts,
+            cellColors: cellColors
+          };
+        }).filter(task => task.name && task.startDate && task.endDate && isValid(parseISO(task.startDate)) && isValid(parseISO(task.endDate))) as Task[];
 
         if (importedTasks.length > 0) {
           if (window.confirm(`${importedTasks.length}件のタスクをインポートしますか？現在のデータは上書きされます。`)) {
@@ -861,21 +910,28 @@ function App() {
                   required
                 />
               </div>
-              <div className="flex items-center gap-2">
-                <div>
-                  <label htmlFor="new-task-color" className="block text-xs font-medium text-gray-700 mb-1">色</label>
+              <div className="w-24">
+                <label htmlFor="new-task-color" className="block text-xs font-medium text-gray-700 mb-1">色</label>
+                <div className="relative">
                   <Input
                     id="new-task-color"
                     type="color"
                     aria-label="タスクの色"
                     value={newTask.color}
                     onChange={(e) => setNewTask({...newTask, color: e.target.value})}
-                    className="w-9 h-9 rounded-lg border cursor-pointer p-1"
+                    className="w-full h-9 rounded-lg border cursor-pointer p-1"
+                  />
+                  <div 
+                    className="absolute -right-3 -top-3 w-4 h-4 rounded-full border border-gray-300 shadow-sm"
+                    style={{ backgroundColor: newTask.color }}
                   />
                 </div>
+              </div>
+              <div className="w-24">
+                <label className="block text-xs font-medium text-transparent mb-1">追加</label>
                 <Button 
                   type="submit"
-                  className="h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-md"
+                  className="w-full h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-md"
                 >
                   <Plus className="w-4 h-4 mr-1" />
                   追加
@@ -1173,13 +1229,35 @@ function App() {
                   </div>
                   <div>
                     <label htmlFor="edit-task-color" className="block text-sm font-medium text-gray-700 mb-1">タスクの色</label>
-                    <Input
-                      id="edit-task-color"
-                      type="color"
-                      value={editingTask.color}
-                      onChange={(e) => setEditingTask(prev => prev ? {...prev, color: e.target.value} : null)}
-                      className="h-12 w-full rounded-lg border-2 cursor-pointer p-1"
-                    />
+                    <div className="relative">
+                      <Input
+                        id="edit-task-color"
+                        type="color"
+                        value={editingTask.color}
+                        onChange={(e) => {
+                          // 色を変更した際に即時反映
+                          const newColor = e.target.value;
+                          setEditingTask(prev => {
+                            if (!prev) return null;
+                            
+                            // 編集中のタスクの色を更新
+                            const updatedTask = {...prev, color: newColor};
+                            
+                            // タスクリストも更新して画面に即時反映
+                            setTasks(tasks.map(t => 
+                              t.id === updatedTask.id ? updatedTask : t
+                            ));
+                            
+                            return updatedTask;
+                          });
+                        }}
+                        className="h-12 w-full rounded-lg border-2 cursor-pointer p-1"
+                      />
+                      <div 
+                        className="absolute -right-3 -top-3 w-6 h-6 rounded-full border border-gray-300 shadow-sm"
+                        style={{ backgroundColor: editingTask.color }}
+                      />
+                    </div>
                   </div>
                   <div className="flex gap-3 pt-4">
                     <Button 
