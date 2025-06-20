@@ -416,15 +416,50 @@ function App() {
   }, [tasks]);
 
   const exportToExcel = () => {
-    const exportData = tasks.map((task, index) => ({
+    const exportData = tasks.map((task, index) => {
+      // セルテキストデータをJSON文字列に変換
+      const cellTextsObj: {[key: string]: string} = {};
+      const cellColorsObj: {[key: string]: string} = {};
+      
+      // taskId-yyyy-MM-dd 形式のキーからyyyy-MM-dd形式のキーに変換
+      if (task.cellTexts) {
+        Object.entries(task.cellTexts).forEach(([key, value]) => {
+          const parts = key.split('-');
+          if (parts.length >= 4) {
+            // taskId-yyyy-MM-dd から yyyy-MM-dd を抽出
+            const datePart = `${parts[parts.length-3]}-${parts[parts.length-2]}-${parts[parts.length-1]}`;
+            cellTextsObj[datePart] = value;
+          }
+        });
+      }
+      
+      // セルカラーデータも同様に処理
+      if (task.cellColors) {
+        Object.entries(task.cellColors).forEach(([key, value]) => {
+          const parts = key.split('-');
+          if (parts.length >= 4) {
+            const datePart = `${parts[parts.length-3]}-${parts[parts.length-2]}-${parts[parts.length-1]}`;
+            cellColorsObj[datePart] = value;
+          }
+        });
+      }
+      
+      // JSON文字列に変換
+      const cellTextsJson = Object.keys(cellTextsObj).length > 0 ? JSON.stringify(cellTextsObj) : '';
+      const cellColorsJson = Object.keys(cellColorsObj).length > 0 ? JSON.stringify(cellColorsObj) : '';
+      
+      return {
         'No.': index + 1,
         'タスク名': task.name,
         '開始日': task.startDate,
         '終了日': task.endDate,
         '初校日': task.firstProofDate || '',
         '校了日': task.finalProofDate || '',
-        '色': task.color
-    }));
+        '色': task.color,
+        'セルデータ': cellTextsJson,
+        'セルカラー': cellColorsJson
+      };
+    });
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
@@ -927,8 +962,8 @@ function App() {
                   />
                 </div>
               </div>
-              <div className="w-24">
-                <label className="block text-xs font-medium text-transparent mb-1">追加</label>
+              <div className="w-24 flex flex-col">
+                <label className="block text-xs font-medium text-transparent mb-1 invisible">追加</label>
                 <Button 
                   type="submit"
                   className="w-full h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-md"
