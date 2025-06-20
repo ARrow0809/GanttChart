@@ -1,0 +1,134 @@
+/* Tailwind directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* スクロール時のヘッダー固定 */
+.gantt-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background-color: #f9fafb;
+}
+
+.gantt-task-name {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: inherit;
+}
+
+/* Task cell styles */
+.task-cell-container {
+  position: relative;
+}
+
+.task-cell {
+  position: absolute;
+  height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  padding: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-cell-text {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* ガントチャートのセルスタイル */
+.gantt-cell {
+  box-sizing: border-box;
+}
+
+/* 日付セルのグリッドレイアウト */
+.gantt-grid {
+  display: flex;
+  width: 100%;
+}
+
+.gantt-grid-cell {
+  flex: 1 0 0%;
+  min-width: 40px;
+  position: relative;
+  border-left: 1px solid #f0f0f0;
+}
+
+/* セル内のテキスト入力 */
+input.gantt-cell-input {
+  background: transparent;
+  border: none;
+  color: white;
+  font-weight: 500;
+  text-align: center;
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+  opacity: 0;
+  transition: all 0.2s ease;
+}
+
+input.gantt-cell-input:focus {
+  outline: none;
+  background-color: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-in {
+    animation-duration: 0.3s;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    animation-fill-mode: both;
+  }
+
+  .fade-in {
+    animation-name: fadeIn;
+  }
+
+  .slide-in-from-bottom-4 {
+    animation-name: slideInFromBottom;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slideInFromBottom {
+    from {
+      transform: translateY(1rem);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    outline-color: var(--color-ring);
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
