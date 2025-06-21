@@ -306,25 +306,10 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   
-  // パスワードが既に使用されたかどうかをチェック
-  useEffect(() => {
-    const passwordUsed = localStorage.getItem('gantt_password_used');
-    if (passwordUsed === 'true') {
-      setError('このパスワードは既に使用されています。');
-    }
-  }, []);
-  
   // ログイン処理
   const handleLogin = () => {
-    // パスワードが既に使用されている場合
-    if (localStorage.getItem('gantt_password_used') === 'true') {
-      setError('このパスワードは既に使用されています。');
-      return;
-    }
-    
     if (input === PASSWORD) {
-      // パスワードが正しい場合、使用済みフラグを設定
-      localStorage.setItem('gantt_password_used', 'true');
+      // パスワードが正しい場合、認証状態を設定
       localStorage.setItem('gantt_authed', '1');
       onAuthenticated();
     } else {
@@ -365,13 +350,11 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="w-full"
-                disabled={localStorage.getItem('gantt_password_used') === 'true'}
               />
             </div>
             <Button 
               onClick={handleLogin} 
               className="w-full"
-              disabled={localStorage.getItem('gantt_password_used') === 'true'}
             >
               ログイン
             </Button>
@@ -1150,7 +1133,7 @@ function App() {
             <Button 
               variant="outline" 
               onClick={() => {
-                // 認証状態のみをリセット（パスワード使用済みフラグはそのまま）
+                // 認証状態をリセット
                 localStorage.removeItem('gantt_authed');
                 setAuthenticated(false);
               }}
