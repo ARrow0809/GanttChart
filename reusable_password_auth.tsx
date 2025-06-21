@@ -14,13 +14,19 @@ const PASSWORD = 'gantt'; // パスワードを設定
 const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
   const [input, setInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
   
   // ログイン処理
   const handleLogin = () => {
     if (input === PASSWORD) {
       // パスワードが正しい場合、認証状態を設定
       localStorage.setItem('gantt_authed', '1');
-      onAuthenticated();
+      setError(null);
+      setShowSuccess(true);
+      // 成功メッセージを表示した後、少し遅延してから認証完了処理を行う
+      setTimeout(() => {
+        onAuthenticated();
+      }, 1500); // 1.5秒後に画面遷移
     } else {
       setError('パスワードが違います');
     }
@@ -51,6 +57,11 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
                 {error}
               </div>
             ) : null}
+            {showSuccess ? (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-md text-green-600 text-sm animate-pulse">
+                ページにご訪問いただきありがとうございます。ログインしています...
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Input
                 type="password"
@@ -59,13 +70,15 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="w-full"
+                disabled={showSuccess}
               />
             </div>
             <Button 
               onClick={handleLogin} 
               className="w-full"
+              disabled={showSuccess}
             >
-              ログイン
+              {showSuccess ? "ログイン中..." : "ログイン"}
             </Button>
           </div>
         </CardContent>
