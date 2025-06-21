@@ -304,14 +304,31 @@ const PASSWORD = 'gantt'; // パスワードを設定
 
 const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
   const [input, setInput] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  
+  // パスワードが既に使用されたかどうかをチェック
+  useEffect(() => {
+    const passwordUsed = localStorage.getItem('gantt_password_used');
+    if (passwordUsed === 'true') {
+      setError('このパスワードは既に使用されています。');
+    }
+  }, []);
   
   // ログイン処理
   const handleLogin = () => {
+    // パスワードが既に使用されている場合
+    if (localStorage.getItem('gantt_password_used') === 'true') {
+      setError('このパスワードは既に使用されています。');
+      return;
+    }
+    
     if (input === PASSWORD) {
+      // パスワードが正しい場合、使用済みフラグを設定
+      localStorage.setItem('gantt_password_used', 'true');
       localStorage.setItem('gantt_authed', '1');
       onAuthenticated();
     } else {
-      alert('パスワードが違います');
+      setError('パスワードが違います');
     }
   };
 
@@ -335,6 +352,11 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
         </CardHeader>
         <CardContent>
           <div className="flex flex-col space-y-4">
+            {error ? (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600 text-sm">
+                {error}
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Input
                 type="password"
@@ -343,9 +365,14 @@ const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 className="w-full"
+                disabled={localStorage.getItem('gantt_password_used') === 'true'}
               />
             </div>
-            <Button onClick={handleLogin} className="w-full">
+            <Button 
+              onClick={handleLogin} 
+              className="w-full"
+              disabled={localStorage.getItem('gantt_password_used') === 'true'}
+            >
               ログイン
             </Button>
           </div>
@@ -1123,6 +1150,7 @@ function App() {
             <Button 
               variant="outline" 
               onClick={() => {
+                // 認証状態のみをリセット（パスワード使用済みフラグはそのまま）
                 localStorage.removeItem('gantt_authed');
                 setAuthenticated(false);
               }}
