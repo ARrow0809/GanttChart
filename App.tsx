@@ -416,19 +416,108 @@ function App() {
   }, [tasks]);
 
   const exportToExcel = () => {
-    const exportData = tasks.map((task, index) => ({
+    // 完全な再現性を確保するための拡張データ構造
+    const exportData = tasks.map((task, index) => {
+      // 完全なタスクデータをJSON形式で保存（元のIDを含む）
+      const taskDataJson = JSON.stringify({
+        id: task.id,
+        name: task.name,
+        startDate: task.startDate,
+        endDate: task.endDate,
+        firstProofDate: task.firstProofDate || '',
+        finalProofDate: task.finalProofDate || '',
+        color: task.color,
+        cellTexts: task.cellTexts || {},
+        cellColors: task.cellColors || {}
+      });
+      
+      // セルテキストデータをJSON文字列に変換（旧形式との互換性のため）
+      const cellTextsObj: {[key: string]: string} = {};
+      const cellColorsObj: {[key: string]: string} = {};
+      
+      // taskId-yyyy-MM-dd 形式のキーからyyyy-MM-dd形式のキーに変換
+      if (task.cellTexts) {
+        Object.entries(task.cellTexts).forEach(([key, value]) => {
+          const parts = key.split('-');
+          if (parts.length >= 4) {
+            // taskId-yyyy-MM-dd から yyyy-MM-dd を抽出
+            const datePart = `${parts[parts.length-3]}-${parts[parts.length-2]}-${parts[parts.length-1]}`;
+            cellTextsObj[datePart] = value;
+          }
+        });
+      }
+      
+      // セルカラーデータも同様に処理
+      if (task.cellColors) {
+        Object.entries(task.cellColors).forEach(([key, value]) => {
+          const parts = key.split('-');
+          if (parts.length >= 4) {
+            const datePart = `${parts[parts.length-3]}-${parts[parts.length-2]}-${parts[parts.length-1]}`;
+            cellColorsObj[datePart] = value;
+          }
+        });
+      }
+      
+      // JSON文字列に変換
+      const cellTextsJson = Object.keys(cellTextsObj).length > 0 ? JSON.stringify(cellTextsObj) : '';
+      const cellColorsJson = Object.keys(cellColorsObj).length > 0 ? JSON.stringify(cellColorsObj) : '';
+      
+      // 基本情報は通常の列として表示
+      return {
         'No.': index + 1,
         'タスク名': task.name,
         '開始日': task.startDate,
         '終了日': task.endDate,
         '初校日': task.firstProofDate || '',
         '校了日': task.finalProofDate || '',
-        '色': task.color
-    }));
+        '色': task.color,
+        // 旧形式との互換性のために残す
+        'セルデータ': cellTextsJson,
+        'セルカラー': cellColorsJson,
+        // 完全なタスクデータを保存（100%再現性のため）
+        'タスク完全データ': taskDataJson
+      };
+    });
 
+    // ガントチャート全体の状態も保存（日付範囲などの情報を含む）
+    const metaData = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      totalTasks: tasks.length,
+      dateRange: {
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString()
+      },
+      // 完全なタスクデータのバックアップ（シート破損時の復元用）
+      allTasksBackup: JSON.stringify(tasks)
+    };
+
+    // メタデータをワークシートに追加
+    const metaSheet = XLSX.utils.json_to_sheet([{
+      'メタデータ': JSON.stringify(metaData)
+    }]);
+
+    // 列幅の設定
     const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const maxWidth = 50; // 最大列幅
+    
+    // 列幅の設定
+    worksheet['!cols'] = [
+      { width: 5 },  // No.
+      { width: 20 }, // タスク名
+      { width: 12 }, // 開始日
+      { width: 12 }, // 終了日
+      { width: 12 }, // 初校日
+      { width: 12 }, // 校了日
+      { width: 10 }, // 色
+      { width: 30 }, // セルデータ
+      { width: 30 }, // セルカラー
+      { width: maxWidth } // タスク完全データ
+    ];
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'ガントチャート');
+    XLSX.utils.book_append_sheet(workbook, metaSheet, 'メタデータ');
 
     const now = new Date();
     const fileName = `ガントチャート_${format(now, 'yyyy-MM-dd_HH-mm-ss')}.xlsx`;
@@ -450,74 +539,193 @@ function App() {
         }
         const data = new Uint8Array(result);
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<any>(worksheet);
+        
+        // メインシートからデータを読み込み
+        const mainSheetName = workbook.SheetNames[0];
+        const mainWorksheet = workbook.Sheets[mainSheetName];
+        const jsonData = XLSX.utils.sheet_to_json<any>(mainWorksheet);
 
-        const importedTasks: Task[] = jsonData.map((row, index) => {
-          const taskId = `imported-task-${Date.now()}-${index}`;
-          const cellTexts: {[key: string]: string} = {};
-          const cellColors: {[key: string]: string} = {};
-          const taskColor = String(row['色'] || row['Color'] || row['color'] || '#3B82F6');
+        let importedTasks: Task[] = [];
+        let importMethod = '';
+        
+        // 新しい形式（完全データ）のインポート処理
+        const tasksWithCompleteData = jsonData.filter(row => row['タスク完全データ']);
+        
+        if (tasksWithCompleteData.length > 0) {
+          // 新形式のデータが見つかった場合
+          importMethod = '完全データ形式';
+          console.log('完全データ形式でインポートを試みます...');
           
-          // セルテキストデータの処理
-          try {
-            const cellDataStr = row['セルデータ'] || row['Cell Data'] || row['cellData'];
-            if (cellDataStr && typeof cellDataStr === 'string') {
-              const cellData = JSON.parse(cellDataStr);
+          const validTasks: Task[] = [];
+          const errors: string[] = [];
+          
+          tasksWithCompleteData.forEach((row, index) => {
+            try {
+              // 完全なタスクデータをJSONから復元
+              const taskData = JSON.parse(row['タスク完全データ']);
               
-              // 日付ごとのセルテキストを復元
-              if (cellData && typeof cellData === 'object') {
-                Object.entries(cellData).forEach(([datePart, text]) => {
-                  if (datePart && text) {
-                    // taskId-yyyy-MM-dd 形式のキーを作成
-                    const cellKey = `${taskId}-${datePart}`;
-                    cellTexts[cellKey] = String(text);
+              // 必須フィールドの検証
+              if (!taskData.id || !taskData.name || !taskData.startDate || !taskData.endDate) {
+                throw new Error(`タスク #${index + 1}: 必須フィールドが不足しています`);
+              }
+              
+              // 日付の検証
+              if (!isValid(parseISO(taskData.startDate)) || !isValid(parseISO(taskData.endDate))) {
+                throw new Error(`タスク #${index + 1}: 無効な日付形式です`);
+              }
+              
+              validTasks.push({
+                id: taskData.id,
+                name: taskData.name,
+                startDate: taskData.startDate,
+                endDate: taskData.endDate,
+                firstProofDate: taskData.firstProofDate || '',
+                finalProofDate: taskData.finalProofDate || '',
+                color: taskData.color || '#3B82F6',
+                cellTexts: taskData.cellTexts || {},
+                cellColors: taskData.cellColors || {}
+              });
+            } catch (error) {
+              if (error instanceof Error) {
+                errors.push(error.message);
+              } else {
+                errors.push(`タスク #${index + 1}: 不明なエラー`);
+              }
+              console.error('タスクデータの解析に失敗しました:', error);
+            }
+          });
+          
+          if (errors.length > 0) {
+            console.warn('インポート中に問題が発生しました:', errors);
+            if (validTasks.length > 0) {
+              const proceed = window.confirm(
+                `${errors.length}件のタスクでエラーが発生しましたが、${validTasks.length}件のタスクは正常に読み込めました。\n` +
+                `続行しますか？\n\n` +
+                `エラー内容:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...他 ${errors.length - 5} 件` : ''}`
+              );
+              
+              if (proceed) {
+                importedTasks = validTasks;
+              } else {
+                return;
+              }
+            } else {
+              alert(
+                `すべてのタスクの読み込みに失敗しました。\n\n` +
+                `エラー内容:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...他 ${errors.length - 5} 件` : ''}`
+              );
+              return;
+            }
+          } else {
+            importedTasks = validTasks;
+          }
+        } else {
+          // メタデータシートからのバックアップ復元を試みる
+          try {
+            if (workbook.SheetNames.includes('メタデータ')) {
+              const metaSheet = workbook.Sheets['メタデータ'];
+              const metaData = XLSX.utils.sheet_to_json<any>(metaSheet);
+              
+              if (metaData.length > 0 && metaData[0]['メタデータ']) {
+                const metaInfo = JSON.parse(metaData[0]['メタデータ']);
+                
+                if (metaInfo.allTasksBackup) {
+                  const backupTasks = JSON.parse(metaInfo.allTasksBackup) as Task[];
+                  
+                  if (Array.isArray(backupTasks) && backupTasks.length > 0 && 
+                      backupTasks.every(task => task.id && task.name && task.startDate && task.endDate)) {
+                    
+                    const useBackup = window.confirm(
+                      `メインシートからの読み込みに失敗しましたが、メタデータのバックアップから${backupTasks.length}件のタスクを復元できます。\n` +
+                      `バックアップから復元しますか？`
+                    );
+                    
+                    if (useBackup) {
+                      importMethod = 'バックアップデータ';
+                      importedTasks = backupTasks;
+                      console.log('バックアップデータから復元しました。');
+                    }
                   }
-                });
+                }
               }
             }
           } catch (error) {
-            console.warn('セルテキストデータの解析に失敗しました:', error);
+            console.warn('バックアップデータの復元に失敗しました:', error);
           }
           
-          // セルカラーデータの処理
-          try {
-            const cellColorStr = row['セルカラー'] || row['Cell Color'] || row['cellColor'];
-            if (cellColorStr && typeof cellColorStr === 'string') {
-              const cellColorData = JSON.parse(cellColorStr);
+          // バックアップからの復元に失敗した場合は旧形式で試行
+          if (importedTasks.length === 0) {
+            importMethod = '旧形式';
+            console.log('旧形式でインポートを試みます...');
+            
+            // 旧形式のデータ（後方互換性のため）
+            importedTasks = jsonData.map((row, index) => {
+              const taskId = `imported-task-${Date.now()}-${index}`;
+              const cellTexts: {[key: string]: string} = {};
+              const cellColors: {[key: string]: string} = {};
+              const taskColor = String(row['色'] || row['Color'] || row['color'] || '#3B82F6');
               
-              // 日付ごとのセルカラーを復元
-              if (cellColorData && typeof cellColorData === 'object') {
-                Object.entries(cellColorData).forEach(([datePart, color]) => {
-                  if (datePart && color) {
-                    // taskId-yyyy-MM-dd 形式のキーを作成
-                    const cellKey = `${taskId}-${datePart}`;
-                    cellColors[cellKey] = String(color);
+              // セルテキストデータの処理
+              try {
+                const cellDataStr = row['セルデータ'] || row['Cell Data'] || row['cellData'];
+                if (cellDataStr && typeof cellDataStr === 'string') {
+                  const cellData = JSON.parse(cellDataStr);
+                  
+                  // 日付ごとのセルテキストを復元
+                  if (cellData && typeof cellData === 'object') {
+                    Object.entries(cellData).forEach(([datePart, text]) => {
+                      if (datePart && text) {
+                        // taskId-yyyy-MM-dd 形式のキーを作成
+                        const cellKey = `${taskId}-${datePart}`;
+                        cellTexts[cellKey] = String(text);
+                      }
+                    });
                   }
-                });
+                }
+              } catch (error) {
+                console.warn(`タスク #${index + 1} のセルテキストデータの解析に失敗しました:`, error);
               }
-            }
-          } catch (error) {
-            console.warn('セルカラーデータの解析に失敗しました:', error);
+              
+              // セルカラーデータの処理
+              try {
+                const cellColorStr = row['セルカラー'] || row['Cell Color'] || row['cellColor'];
+                if (cellColorStr && typeof cellColorStr === 'string') {
+                  const cellColorData = JSON.parse(cellColorStr);
+                  
+                  // 日付ごとのセルカラーを復元
+                  if (cellColorData && typeof cellColorData === 'object') {
+                    Object.entries(cellColorData).forEach(([datePart, color]) => {
+                      if (datePart && color) {
+                        // taskId-yyyy-MM-dd 形式のキーを作成
+                        const cellKey = `${taskId}-${datePart}`;
+                        cellColors[cellKey] = String(color);
+                      }
+                    });
+                  }
+                }
+              } catch (error) {
+                console.warn(`タスク #${index + 1} のセルカラーデータの解析に失敗しました:`, error);
+              }
+              
+              return {
+                id: taskId,
+                name: String(row['タスク名'] || row['Task Name'] || row['name'] || `タスク${index + 1}`),
+                startDate: formatDateForInput(row['開始日'] || row['Start Date'] || row['startDate']),
+                endDate: formatDateForInput(row['終了日'] || row['End Date'] || row['endDate']),
+                firstProofDate: formatDateForInput(row['初校日'] || row['First Proof'] || row['firstProofDate']) || '',
+                finalProofDate: formatDateForInput(row['校了日'] || row['Final Proof'] || row['finalProofDate']) || '',
+                color: taskColor,
+                cellTexts: cellTexts,
+                cellColors: cellColors
+              };
+            }).filter(task => task.name && task.startDate && task.endDate && isValid(parseISO(task.startDate)) && isValid(parseISO(task.endDate))) as Task[];
           }
-          
-          return {
-            id: taskId,
-            name: String(row['タスク名'] || row['Task Name'] || row['name'] || `タスク${index + 1}`),
-            startDate: formatDateForInput(row['開始日'] || row['Start Date'] || row['startDate']),
-            endDate: formatDateForInput(row['終了日'] || row['End Date'] || row['endDate']),
-            firstProofDate: formatDateForInput(row['初校日'] || row['First Proof'] || row['firstProofDate']) || '',
-            finalProofDate: formatDateForInput(row['校了日'] || row['Final Proof'] || row['finalProofDate']) || '',
-            color: taskColor,
-            cellTexts: cellTexts,
-            cellColors: cellColors
-          };
-        }).filter(task => task.name && task.startDate && task.endDate && isValid(parseISO(task.startDate)) && isValid(parseISO(task.endDate))) as Task[];
+        }
 
         if (importedTasks.length > 0) {
-          if (window.confirm(`${importedTasks.length}件のタスクをインポートしますか？現在のデータは上書きされます。`)) {
+          if (window.confirm(`${importMethod}で${importedTasks.length}件のタスクをインポートしますか？現在のデータは上書きされます。`)) {
             setTasks(importedTasks);
+            console.log(`${importMethod}で${importedTasks.length}件のタスクをインポートしました。`);
           }
         } else {
           alert('有効なタスクデータが見つかりませんでした。ファイル形式を確認してください。');
@@ -927,8 +1135,8 @@ function App() {
                   />
                 </div>
               </div>
-              <div className="w-24">
-                <label className="block text-xs font-medium text-transparent mb-1">追加</label>
+              <div className="w-24 flex flex-col">
+                <label className="block text-xs font-medium text-transparent mb-1 invisible">追加</label>
                 <Button 
                   type="submit"
                   className="w-full h-9 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 transition-all duration-200 shadow-md"
