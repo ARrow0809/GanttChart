@@ -11,7 +11,7 @@ import {
   CardDescription as CardDescriptionPrimitive,
   CardFooter as CardFooterPrimitive
 } from './src/components/ui/card.jsx';
-import { Plus, Download, Upload, Trash2, Edit, Save, FileSpreadsheet, Calendar, Clock, Flag, CheckCircle2 } from 'lucide-react';
+import { Plus, Download, Upload, Trash2, Edit, Save, FileSpreadsheet, Calendar, Clock, Flag, CheckCircle2, Lock } from 'lucide-react';
 import { format, parseISO, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isValid, isWithinInterval } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
@@ -295,7 +295,77 @@ const defaultTasks: Task[] = [
 // NewTask type (Task without id)
 type NewTask = Omit<Task, 'id'>;
 
+// パスワード認証コンポーネント
+interface PasswordAuthProps {
+  onAuthenticated: () => void;
+}
+
+const PASSWORD = 'gantt'; // パスワードを設定
+
+const PasswordAuth: React.FC<PasswordAuthProps> = ({ onAuthenticated }) => {
+  const [input, setInput] = useState('');
+  
+  // ログイン処理
+  const handleLogin = () => {
+    if (input === PASSWORD) {
+      localStorage.setItem('gantt_authed', '1');
+      onAuthenticated();
+    } else {
+      alert('パスワードが違います');
+    }
+  };
+
+  // キー入力のハンドリング
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleLogin();
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <Card className="w-full max-w-md animate-in fade-in slide-in-from-bottom-4">
+        <CardHeader>
+          <CardTitle className="text-center flex items-center justify-center gap-2">
+            <Lock className="h-5 w-5" /> ガントチャート アクセス認証
+          </CardTitle>
+          <CardDescription className="text-center">
+            このガントチャートツールにアクセスするにはパスワードが必要です
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col space-y-4">
+            <div className="space-y-2">
+              <Input
+                type="password"
+                placeholder="パスワードを入力してください"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-full"
+              />
+            </div>
+            <Button onClick={handleLogin} className="w-full">
+              ログイン
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
 function App() {
+  // 認証状態
+  const [authenticated, setAuthenticated] = useState(false);
+  
+  // 認証状態の確認
+  useEffect(() => {
+    if (localStorage.getItem('gantt_authed')) {
+      setAuthenticated(true);
+    }
+  }, []);
+  
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [completedTask, setCompletedTask] = useState<{taskId: string, taskName: string, date: string} | null>(null);
@@ -992,6 +1062,12 @@ function App() {
     format(day, 'yyyy-MM-dd') === todayFormatted
   );
 
+  // 認証されていない場合はパスワード認証画面を表示
+  if (!authenticated) {
+    return <PasswordAuth onAuthenticated={() => setAuthenticated(true)} />;
+  }
+
+  // 認証済みの場合はアプリの内容を表示
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 p-4 font-sans">
       <div className="max-w-7xl mx-auto">
@@ -1043,6 +1119,18 @@ function App() {
             >
               <Trash2 className="w-4 h-4 mr-2" aria-hidden="true" />
               データクリア
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                localStorage.removeItem('gantt_authed');
+                setAuthenticated(false);
+              }}
+              className="hover:bg-gray-50 hover:border-gray-300 transition-all duration-200"
+              aria-label="ログアウト"
+            >
+              <Lock className="w-4 h-4 mr-2" aria-hidden="true" />
+              ログアウト
             </Button>
           </div>
         </header>
